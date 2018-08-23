@@ -58,7 +58,9 @@ propertyName: StringLiteral | IDENTIFIER;
 
 comment: SingleLineComment | MultiLineComment;
 
-RegexLiteral: '/' (~[/] | '\\/')+ '/' (RegexFlag)*;
+RegexLiteral: '/' RegexPattern '/' (RegexFlag)*;
+
+RegexPattern: (~[/] | '\\/')+;
 
 SingleLineComment:
 	'//' ~[\r\n\u2028\u2029]* -> channel(HIDDEN);
