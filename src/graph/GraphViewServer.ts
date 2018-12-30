@@ -10,6 +10,7 @@ import * as io from 'socket.io';
 import * as vscode from 'vscode';
 import { callWithTelemetryAndErrorHandling, IActionContext } from 'vscode-azureextensionui';
 import { removeDuplicatesById } from "../utils/array";
+import { rejectOnTimeout } from '../utils/timeout';
 import { GraphConfiguration } from './GraphConfiguration';
 import { GraphViewServerSocket } from "./GraphViewServerSocket";
 import { IGremlinEndpoint } from "./gremlinEndpoints";
@@ -317,7 +318,7 @@ export class GraphViewServer extends EventEmitter {
   // tslint:disable-next-line:no-any
   private async _executeQueryCore(queryId: number, gremlinQuery: string): Promise<any[]> {
     if (this.configuration.gremlinEndpoint) {
-      return this._executeQueryCoreForEndpoint(queryId, gremlinQuery, this.configuration.gremlinEndpoint);
+      return await this._executeQueryCoreForEndpoint(queryId, gremlinQuery, this.configuration.gremlinEndpoint);
     } else {
       // We haven't figured out yet which endpoint actually works (if any - network could be down, etc.), so try them all
       let firstValidError: {} = null;
@@ -347,15 +348,16 @@ export class GraphViewServer extends EventEmitter {
   // tslint:disable-next-line:no-any
   private async _executeQueryCoreForEndpoint(queryId: number, gremlinQuery: string, endpoint: IGremlinEndpoint): Promise<any[]> {
     this.log(`Executing query #${queryId} (${endpoint.host}:${endpoint.port}): ${truncateQuery(gremlinQuery)}`);
-
-    const client = gremlin.createClient(
-      endpoint.port,
-      endpoint.host,
+    let newHostURI = `${endpoint.host}:${endpoint.port}`;
+    const username = `/dbs/${this._configuration.databaseName}/colls/${this._configuration.graphName}`;
+    const password = this._configuration.key;
+    const authenticator = new gremlin.driver.auth.PlainTextSaslAuthenticator(username, password);
+    const client = new gremlin.driver.Client(
+      newHostURI,
       {
         "session": false,
         "ssl": endpoint.ssl,
-        "user": `/dbs/${this._configuration.databaseName}/colls/${this._configuration.graphName}`,
-        "password": this._configuration.key
+        "authenticator": authenticator
       });
 
     // Patch up handleProtocolMessage as a temporary work-around for https://github.com/jbmusso/gremlin-javascript/issues/93
@@ -371,28 +373,47 @@ export class GraphViewServer extends EventEmitter {
     };
 
     let socketError: { message?: string };
-    client.on('error', handleError);
+    client._connection._ws.on('error', handleError);
 
     function handleError(err) {
       // These are errors that come from the web socket communication (i.e. address not found)
       socketError = err;
     }
-
-    // tslint:disable-next-line:no-any
-    return new Promise<[any[]]>((resolve, reject) => {
-      client.execute(gremlinQuery, {}, (err, results) => {
+    let clientSubmitTimeout = 5 * 1000;
+    return await rejectOnTimeout(clientSubmitTimeout, async () => {
+      try {
+        const result = await client.submit(gremlinQuery);
+        this.log("Results from gremlin", result);
+        return result;
+      }
+      catch (err) {
         if (socketError) {
           this.log("Gremlin communication error: ", socketError.message || socketError.toString());
-          reject(socketError);
-        } else if (err) {
-          this.log("Error from gremlin server: ", err.message || err.toString());
-          reject(err);
+          throw socketError;
         } else {
-          this.log("Results from gremlin", results);
-          resolve(results);
+          this.log("Error from gremlin server: ", err.message || err.toString());
+          throw err;
         }
-      });
-    });
+      }
+    }
+    );
+    /*
+        // tslint:disable-next-line:no-any
+        return new Promise<[any[]]>((resolve, reject) => {
+          client.execute(gremlinQuery, {}, (err, results) => {
+            if (socketError) {
+              this.log("Gremlin communication error: ", socketError.message || socketError.toString());
+              reject(socketError);
+            } else if (err) {
+              this.log("Error from gremlin server: ", err.message || err.toString());
+              reject(err);
+            } else {
+              this.log("Results from gremlin", results);
+              resolve(results);
+            }
+          });
+        });
+    */
   }
 
   private isParseError(err: { message?: string }): boolean {
@@ -470,6 +491,6 @@ export class GraphViewServer extends EventEmitter {
 
   // tslint:disable-next-line:no-any
   private log(_message, ..._args: any[]) {
-    // console.log(message, ...args);
+    console.log(_message, ..._args);
   }
 }
