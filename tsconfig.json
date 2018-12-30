@@ -21,7 +21,11 @@
 				"node_modules/vscode/*",
 				"*"
 			]
-		}
+		},
+		"typeRoots": [
+			"node_modules/@types/",
+			"./gremlin.d.ts"
+		]
 	},
 	"exclude": [
 		"node_modules",

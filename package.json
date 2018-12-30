@@ -898,7 +898,7 @@
 		"d3": "^3.0.0",
 		"documentdb": "^1.14.2",
 		"fs-extra": "^4.0.2",
-		"gremlin": "^2.6.0",
+		"gremlin": "^3.3.4",
 		"mongodb": "^2.2.25",
 		"mongodb-extended-json": "^1.10.0",
 		"ms-rest": "^2.2.1",
