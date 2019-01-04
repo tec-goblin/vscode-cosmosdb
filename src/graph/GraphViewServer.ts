@@ -348,19 +348,24 @@ export class GraphViewServer extends EventEmitter {
   // tslint:disable-next-line:no-any
   private async _executeQueryCoreForEndpoint(queryId: number, gremlinQuery: string, endpoint: IGremlinEndpoint): Promise<any[]> {
     this.log(`Executing query #${queryId} (${endpoint.host}:${endpoint.port}): ${truncateQuery(gremlinQuery)}`);
-    let newHostURI = `${endpoint.host}:${endpoint.port}`;
+    let newHostURI = `${endpoint.host}:${endpoint.port}`; //test ws handleError by putting wrong host here
     const username = `/dbs/${this._configuration.databaseName}/colls/${this._configuration.graphName}`;
     const password = this._configuration.key;
     const authenticator = new gremlin.driver.auth.PlainTextSaslAuthenticator(username, password);
     const client = new gremlin.driver.Client(
       newHostURI,
-      {
-        "session": false,
-        "ssl": endpoint.ssl,
+      { //endpoint.ssl removed, it doesn't seem to play any role
         "authenticator": authenticator
       });
 
-    // Patch up handleProtocolMessage as a temporary work-around for https://github.com/jbmusso/gremlin-javascript/issues/93
+    let socketError: { message?: string }; //To test is it's needed, by using a wrong address
+    //client._connection._ws.onerror = handleError;
+
+    function handleError(err) {
+      // These are errors that come from the web socket communication (i.e. address not found)
+      //   socketError = err; //test is it's needed, by sending bad urls
+    }
+    /* Old handling of Binary data:
     let originalHandleProtocolMessage = client.handleProtocolMessage;
     client.handleProtocolMessage = function handleProtocolMessage(message) {
       if (!message.binary) {
@@ -368,23 +373,14 @@ export class GraphViewServer extends EventEmitter {
         message.data = new Buffer(message.data);
         message.binary = true;
       }
-
-      originalHandleProtocolMessage.call(this, message);
-    };
-
-    let socketError: { message?: string };
-    client._connection._ws.on('error', handleError);
-
-    function handleError(err) {
-      // These are errors that come from the web socket communication (i.e. address not found)
-      socketError = err;
-    }
+/* probably not needed*/
     let clientSubmitTimeout = 5 * 1000;
     return await rejectOnTimeout(clientSubmitTimeout, async () => {
       try {
+        await client.open();
         const result = await client.submit(gremlinQuery);
-        this.log("Results from gremlin", result);
-        return result;
+        this.log("Results from gremlin", result.results.items);
+        return result.results.items; //this is needed only for version 3.4 (for 3.3.4 return result directly)
       }
       catch (err) {
         if (socketError) {
@@ -395,25 +391,11 @@ export class GraphViewServer extends EventEmitter {
           throw err;
         }
       }
+      finally {
+        await client.close(); //maybe unnecessary?
+      }
     }
     );
-    /*
-        // tslint:disable-next-line:no-any
-        return new Promise<[any[]]>((resolve, reject) => {
-          client.execute(gremlinQuery, {}, (err, results) => {
-            if (socketError) {
-              this.log("Gremlin communication error: ", socketError.message || socketError.toString());
-              reject(socketError);
-            } else if (err) {
-              this.log("Error from gremlin server: ", err.message || err.toString());
-              reject(err);
-            } else {
-              this.log("Results from gremlin", results);
-              resolve(results);
-            }
-          });
-        });
-    */
   }
 
   private isParseError(err: { message?: string }): boolean {

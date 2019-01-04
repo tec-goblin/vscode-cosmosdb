@@ -1,17 +1,20 @@
 import { EventEmitter } from 'events';
+
 export namespace driver {
     export class Client {
         constructor(url: string, options?: ConnectionOptions);
-        open(): Promise<void>;//to confirm void in connection
+        open(): Promise<void>;
         close(): Promise<void>;
-        submit<Τ>(message: (process.Bytecode | string), bindings: Bindings): Promise<{ err: Error | null, results: ResultSet<Τ> }>;
+        submit<Τ>(message: (process.Bytecode | string), bindings?: Bindings): Promise<{ err: Error | null, results: ResultSet<Τ> }>;
+        _connection: Connection; //TODO: verify if it's really needed
     }
 
     export class Connection extends EventEmitter {
         constructor(url: string, options?: ConnectionOptions);
-        open(): Promise<void>;//to confirm void in connection
+        open(): Promise<void>;
         close(): Promise<void>;
-        submit<Τ>(message: (process.Bytecode | string), bindings: Bindings): Promise<{ err: Error | null, results: ResultSet<Τ> }>;
+        submit<Τ>(message: (process.Bytecode | string), bindings?: Bindings): Promise<{ err: Error | null, results: ResultSet<Τ> }>;
+        _ws: WebSocket; //TODO: verify if it's really needed
     }
 
     export interface ResultSet<T> {
@@ -34,14 +37,21 @@ export namespace driver {
         traversalSource?: string,
         reader?: structure.GraphSONReader,
         writer?: structure.GraphSONWriter,
-        authenticator?: Authenticator
+        authenticator?: auth.Authenticator
     }
 
     export interface Bindings {
         [key: string]: any;
     }
-    export interface Authenticator {
-        evaluateChallenge(challenge: string): any; //can be improved
+    export namespace auth {
+        export interface Authenticator {
+            evaluateChallenge(challenge: string): any; //can be improved
+        }
+
+        export class PlainTextSaslAuthenticator implements Authenticator {
+            constructor(username: string, password: string, autzid?: string);
+            evaluateChallenge(challenge: string): any;
+        }
     }
 }
 
