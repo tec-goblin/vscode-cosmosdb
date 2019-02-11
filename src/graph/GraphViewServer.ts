@@ -348,7 +348,7 @@ export class GraphViewServer extends EventEmitter {
   // tslint:disable-next-line:no-any
   private async _executeQueryCoreForEndpoint(queryId: number, gremlinQuery: string, endpoint: IGremlinEndpoint): Promise<any[]> {
     this.log(`Executing query #${queryId} (${endpoint.host}:${endpoint.port}): ${truncateQuery(gremlinQuery)}`);
-    let newHostURI = `${endpoint.host}:${endpoint.port}`; //test ws handleError by putting wrong host here
+    let newHostURI = `wss://${endpoint.host}:${endpoint.port}`; //test ws handleError by putting wrong host here
     const username = `/dbs/${this._configuration.databaseName}/colls/${this._configuration.graphName}`;
     const password = this._configuration.key;
     const authenticator = new gremlin.driver.auth.PlainTextSaslAuthenticator(username, password);
